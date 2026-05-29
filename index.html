@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google PDF 頁面編輯大師</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF-Lib CDN for PDF creation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- PDF.js CDN for PDF rendering/preview -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <!-- SortableJS CDN for drag and drop reordering -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        // 設定 PDFJS Worker 確保效能與穩定度
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+        
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        googleBlue: '#4285F4',
+                        googleRed: '#EA4335',
+                        googleYellow: '#FBBC05',
+                        googleGreen: '#34A853',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Google Fonts 風格與平滑滾動 */
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght=300;400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+            background-color: #f8f9fa;
+            overflow-x: hidden;
+        }
+        /* 拖曳時的陰影與視覺特效 */
+        .sortable-ghost {
+            opacity: 0.4;
+            border: 2px dashed #4285F4;
+        }
+        .sortable-chosen {
+            box-shadow: 0 10px 15px -3px rgba(66, 133, 244, 0.3);
+        }
+        /* 淡入動畫 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.25s ease-out forwards;
+        }
+        
+        /* 美化捲軸 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 20px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background-color: #94a3b8;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- 頂部 Google 色條 -->
+    <div class="h-1.5 w-full flex">
+        <div class="h-full flex-1 bg-googleBlue"></div>
+        <div class="h-full flex-1 bg-googleRed"></div>
+        <div class="h-full flex-1 bg-googleYellow"></div>
+        <div class="h-full flex-1 bg-googleGreen"></div>
+    </div>
+
+    <!-- 導覽列 -->
+    <header class="bg-white border-b border-gray-200 py-4 px-6 sticky top-0 z-10 shadow-sm">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <!-- Google 四色風格徽章 -->
+                <div class="grid grid-cols-2 gap-1 w-8 h-8">
+                    <div class="bg-googleBlue rounded-sm"></div>
+                    <div class="bg-googleRed rounded-sm"></div>
+                    <div class="bg-googleYellow rounded-sm"></div>
+                    <div class="bg-googleGreen rounded-sm"></div>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <span>G-PDF</span>
+                        <span class="text-gray-400 font-light text-sm">| 頁面重組與排版大師</span>
+                    </h1>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <button id="clear-btn" class="px-4 py-2 text-sm font-medium text-gray-600 hover:text-googleRed border border-gray-200 hover:border-googleRed/30 rounded-full transition-all duration-200 flex items-center gap-1.5 hover:bg-red-50">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i> 清空全部
+                </button>
+                <button id="export-btn" class="px-6 py-2 text-sm font-medium text-white bg-googleBlue hover:bg-blue-600 rounded-full transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2" disabled>
+                    <i data-lucide="download" class="w-4 h-4"></i> 匯出全新 PDF
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區 -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row gap-6">
+        
+        <!-- 左側控制面板與上傳區 -->
+        <section class="w-full lg:w-80 shrink-0 flex flex-col gap-6">
+            
+            <!-- 上傳卡片 -->
+            <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+                <h2 class="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <span class="w-1.5 h-4 bg-googleBlue rounded-full"></span> 匯入檔案來源
+                </h2>
+                
+                <!-- 拖曳區 -->
+                <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-googleBlue hover:bg-blue-50/30 transition-all duration-200 cursor-pointer group">
+                    <input type="file" id="file-input" multiple accept=".pdf,.png,.jpg,.jpeg" class="hidden">
+                    <div class="flex flex-col items-center gap-3">
+                        <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-googleBlue group-hover:scale-110 transition-transform duration-200">
+                            <i data-lucide="file-plus-2" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">點擊上傳 或 拖曳檔案至此</p>
+                            <p class="text-xs text-gray-400 mt-1">支援 PDF、PNG、JPG 格式</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex flex-col gap-2">
+                    <button onclick="document.getElementById('file-input').click()" class="w-full py-2.5 px-4 text-sm font-medium text-googleBlue bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors duration-150 flex items-center justify-center gap-2">
+                        <i data-lucide="upload" class="w-4 h-4"></i> 選擇本機檔案
+                    </button>
+                </div>
+            </div>
+
+            <!-- 檔案瘦身設定卡片 -->
+            <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+                <h2 class="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <span class="w-1.5 h-4 bg-googleYellow rounded-full"></span> 匯出瘦身設定
+                </h2>
+                
+                <div class="space-y-4">
+                    <!-- 壓縮等級選擇器 -->
+                    <div class="flex flex-col gap-2">
+                        <label class="text-xs font-semibold text-gray-500">壓縮等級強度</label>
+                        <div class="grid grid-cols-3 gap-1.5 p-1 bg-gray-150 rounded-xl bg-gray-100">
+                            <button id="compress-low-btn" onclick="setCompressionLevel('low')" class="py-2 text-xs font-medium rounded-lg transition-all text-gray-600 hover:text-gray-900">
+                                高畫質
+                            </button>
+                            <button id="compress-med-btn" onclick="setCompressionLevel('med')" class="py-2 text-xs font-medium rounded-lg transition-all bg-white text-googleBlue shadow-sm font-bold border border-blue-100">
+                                標準瘦身
+                            </button>
+                            <button id="compress-high-btn" onclick="setCompressionLevel('high')" class="py-2 text-xs font-medium rounded-lg transition-all text-gray-600 hover:text-gray-900">
+                                強力瘦身
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 等級詳細資訊說明 -->
+                    <div class="bg-gray-50 rounded-xl p-3 border border-gray-150">
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-gray-700 mb-1">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-googleBlue"></i>
+                            <span id="compress-title-desc">標準智慧瘦身 (推薦)</span>
+                        </div>
+                        <p id="compress-detail-desc" class="text-[11px] text-gray-500 leading-relaxed">
+                            圖片自動等比限制於 1000px 內，壓縮率 70%。能省下約 50% 空間，畫質無感耗損！
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作提示與狀態統計 -->
+            <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex-1">
+                <h2 class="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <span class="w-1.5 h-4 bg-googleGreen rounded-full"></span> 專案統計與說明
+                </h2>
+                
+                <div class="space-y-4">
+                    <div class="bg-gray-50 rounded-xl p-4 flex justify-between items-center">
+                        <span class="text-sm text-gray-500">當前總頁數</span>
+                        <span id="page-count-badge" class="text-lg font-bold text-googleBlue">0 頁</span>
+                    </div>
+
+                    <div class="text-xs text-gray-500 space-y-2">
+                        <p class="font-medium text-gray-700">💡 操作提示：</p>
+                        <ul class="list-disc pl-4 space-y-1">
+                            <li>可以直接<span class="font-semibold text-googleBlue">修改左上角頁碼數字</span>，頁面將立即自動重新排序。</li>
+                            <li>拖曳卡片上的 <span class="font-semibold text-gray-700">::: 把手</span> 亦能任意變更排列順序。</li>
+                            <li>您可以多次匯入不同的 PDF 或圖片，將它們揉合成一個新的檔案。</li>
+                            <li>圖片檔在匯出時，會依上方的「瘦身設定」自動壓縮優化並轉換。</li>
+                            <li>點擊卡片右上角的「<span class="text-googleRed">移除</span>」可刪除單一頁面。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右側工作區（卡片展示區） -->
+        <section class="flex-1 flex flex-col min-h-[450px]">
+            <!-- 空狀態 -->
+            <div id="empty-state" class="flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col items-center justify-center p-8 text-center">
+                <div class="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 mb-4">
+                    <i data-lucide="files" class="w-10 h-10 text-gray-300"></i>
+                </div>
+                <h3 class="text-lg font-medium text-gray-800 mb-1">您的工作區目前是空的</h3>
+                <p class="text-sm text-gray-500 max-w-sm mb-6">請在左側上傳 PDF 或圖片檔案，即可開始重新調整順序、新增與刪除頁面。</p>
+                <button onclick="document.getElementById('file-input').click()" class="px-5 py-2 text-sm font-medium text-white bg-googleBlue hover:bg-blue-600 rounded-full shadow-md transition-all duration-200 flex items-center gap-2">
+                    <i data-lucide="plus" class="w-4 h-4"></i> 開始匯入
+                </button>
+            </div>
+
+            <!-- 卡片容器 -->
+            <div id="pages-container" class="hidden flex-1 flex flex-col gap-6">
+                <div id="pages-layout-wrapper" class="flex-1 flex flex-col md:flex-row gap-6">
+                    
+                    <!-- 頁面網格容器 (內滾動設計) -->
+                    <div class="flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col h-full max-h-[calc(100vh-220px)]">
+                        <div class="flex items-center justify-between mb-4 pb-4 border-b border-gray-100 shrink-0">
+                            <h3 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+                                <i data-lucide="layout-grid" class="w-5 h-5 text-googleBlue"></i> 調整頁面排序
+                            </h3>
+                            <span class="text-xs text-gray-400">點擊卡片看預覽，拖曳把手可排序</span>
+                        </div>
+                        
+                        <!-- 頁面網格滾動區域 -->
+                        <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                            <div id="pages-grid" class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                <!-- 卡片模板將動態插入在此 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 單頁大圖預覽區 (已優化中型螢幕佈局與縮放控制) -->
+                    <div id="preview-panel" class="w-full md:w-80 xl:w-96 bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col shrink-0 md:sticky md:top-24 h-fit max-h-[calc(100vh-220px)]">
+                        
+                        <!-- 預覽區標題與置左/置右 -->
+                        <div class="flex items-center justify-between mb-3 pb-3 border-b border-gray-100 shrink-0">
+                            <h3 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+                                <i data-lucide="eye" class="text-googleRed w-5 h-5"></i> 頁面詳細預覽
+                            </h3>
+                            <!-- 置左/置右 佈局選擇器 -->
+                            <div class="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200">
+                                <button id="toggle-prev-left" onclick="setPreviewPosition('left')" class="px-2 py-1 text-[10px] font-medium rounded-md transition-all text-gray-500 hover:text-gray-800" title="將大圖預覽區置於左側">
+                                    置左
+                                </button>
+                                <button id="toggle-prev-right" onclick="setPreviewPosition('right')" class="px-2 py-1 text-[10px] font-bold rounded-md transition-all bg-white text-googleBlue shadow-sm border border-gray-200/50" title="將大圖預覽區置於右側">
+                                    置右
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 全新！無段式縮放與多功能工具列 -->
+                        <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-xl border border-gray-200 text-xs mb-4 shrink-0">
+                            <span class="font-semibold text-gray-600 flex items-center gap-1">
+                                <i data-lucide="zoom-in" class="w-3.5 h-3.5 text-googleBlue"></i> 預覽縮放:
+                            </span>
+                            <div class="flex items-center gap-1.5">
+                                <button onclick="zoomPreview(-0.25)" class="p-1 rounded-md bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 transition-colors" title="縮小 (Alt + 滾輪)">
+                                    <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <span id="zoom-percent" class="font-bold text-gray-700 min-w-[42px] text-center">100%</span>
+                                <button onclick="zoomPreview(0.25)" class="p-1 rounded-md bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 transition-colors" title="放大 (Alt + 滾輪)">
+                                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button onclick="resetZoom()" class="p-1 rounded-md bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 transition-colors" title="適應大小 / 重設 (100%)">
+                                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 預覽大圖主要渲染容器 -->
+                        <div id="preview-content" class="flex-1 flex flex-col justify-center items-center min-h-[320px] bg-gray-50 rounded-xl p-4 border border-dashed border-gray-200 overflow-y-auto custom-scrollbar">
+                            <!-- 動態插入選取的頁面預覽 -->
+                            <div class="text-center text-gray-400">
+                                <i data-lucide="file-text" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                                <p class="text-sm">點選左側任意頁面<br>即可在此查看預覽大圖</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 全螢幕載入指示器 -->
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-white gap-4">
+        <div class="relative w-16 h-16">
+            <!-- Google色多彩旋轉載入圈 -->
+            <div class="absolute inset-0 border-4 border-t-googleBlue border-r-googleRed border-b-googleYellow border-l-googleGreen rounded-full animate-spin"></div>
+        </div>
+        <div class="text-center">
+            <h3 id="loading-title" class="text-lg font-semibold">正在處理中...</h3>
+            <p id="loading-desc" class="text-sm text-gray-300 mt-1">請稍候，這可能需要幾秒鐘</p>
+        </div>
+    </div>
+
+    <!-- 自訂提示視窗 -->
+    <div id="alert-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl transform transition-all">
+            <div class="flex items-center gap-3 mb-4">
+                <div id="alert-icon-container" class="w-10 h-10 rounded-full flex items-center justify-center">
+                    <!-- 圖示 -->
+                </div>
+                <h3 id="alert-title" class="text-base font-bold text-gray-800">通知</h3>
+            </div>
+            <p id="alert-message" class="text-sm text-gray-500 mb-6 leading-relaxed">提示訊息內容</p>
+            <div id="alert-footer" class="flex justify-end gap-2">
+                <button id="alert-close-btn" class="px-5 py-2 text-sm font-medium text-white bg-googleBlue hover:bg-blue-600 rounded-full transition-colors">確認</button>
+                <button id="confirm-cancel" class="hidden px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors">取消</button>
+                <button id="confirm-ok" class="hidden px-5 py-2 text-sm font-medium text-white bg-googleBlue hover:bg-blue-600 rounded-full transition-colors">確認</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 頁底 -->
+    <footer class="bg-white border-t border-gray-100 py-6 text-center text-xs text-gray-400">
+        <div class="max-w-7xl mx-auto px-4">
+            <p>© 2026 Google PDF 頁面編輯大師. 設計專屬尊貴的男子漢大人使用.</p>
+        </div>
+    </footer>
+
+    <!-- 核心 JS 邏輯 -->
+    <script>
+        // 全域狀態
+        let pages = []; // 儲存所有頁面資訊
+        let sourceFiles = {}; // 鍵值為 fileId，值為 { name, arrayBuffer, type, mimeType }
+        let fileIdCounter = 0;
+        let pageIdCounter = 0;
+        let selectedPageId = null; // 當前選取的預覽頁面 ID
+        let previewPosition = 'right'; // 'left' 或 'right' (預設在右)
+        
+        // 縮放與拖曳漫遊控制狀態
+        let currentZoom = 1.0; // 預設縮放倍率
+        let panX = 0;
+        let panY = 0;
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+
+        // 瘦身壓縮配置
+        let compressionLevel = 'med'; // 'low', 'med', 'high'
+        const compressionSettings = {
+            low: {
+                title: '原始高品質 (不瘦身)',
+                desc: '保持原始尺寸（最大 1600px）並套用 90% 高畫質儲存。適合正式合約、精細證件等不需要大幅度壓縮的文件。',
+                maxDim: 1600,
+                quality: 0.90
+            },
+            med: {
+                title: '標準智慧瘦身 (推薦)',
+                desc: '圖片自動等比限制於 1000px 內，壓縮率 70%。能省下約 50% 空間，畫質無感耗損！',
+                maxDim: 1000,
+                quality: 0.70
+            },
+            high: {
+                title: '強力深度瘦身 (極致壓縮)',
+                desc: '限制圖片在 700px 內並套用 45% 壓縮率。最適合網絡傳輸、電子郵件附檔，提供極小檔案體積。',
+                maxDim: 700,
+                quality: 0.45
+            }
+        };
+
+        // DOM 元素
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const emptyState = document.getElementById('empty-state');
+        const pagesContainer = document.getElementById('pages-container');
+        const pagesGrid = document.getElementById('pages-grid');
+        const pageCountBadge = document.getElementById('page-count-badge');
+        const clearBtn = document.getElementById('clear-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingTitle = document.getElementById('loading-title');
+        const loadingDesc = document.getElementById('loading-desc');
+        
+        // 自訂 Alert / Confirm 視窗元素
+        const alertModal = document.getElementById('alert-modal');
+        const alertTitle = document.getElementById('alert-title');
+        const alertMessage = document.getElementById('alert-message');
+        const alertIconContainer = document.getElementById('alert-icon-container');
+        const alertCloseBtn = document.getElementById('alert-close-btn');
+        const confirmCancel = document.getElementById('confirm-cancel');
+        const confirmOk = document.getElementById('confirm-ok');
+
+        // 初始化
+        window.onload = function() {
+            lucide.createIcons();
+            initDragAndDrop();
+            initSortable();
+            setupEventListeners();
+        };
+
+        // 動態切換預覽區置左 / 置右 (中型螢幕 md 以上生效)
+        function setPreviewPosition(position) {
+            previewPosition = position;
+            const layoutWrapper = document.getElementById('pages-layout-wrapper');
+            const leftBtn = document.getElementById('toggle-prev-left');
+            const rightBtn = document.getElementById('toggle-prev-right');
+            
+            leftBtn.className = "px-2 py-1 text-[10px] font-medium rounded-md transition-all text-gray-500 hover:text-gray-800";
+            rightBtn.className = "px-2 py-1 text-[10px] font-medium rounded-md transition-all text-gray-500 hover:text-gray-800";
+            
+            if (position === 'left') {
+                layoutWrapper.classList.remove('md:flex-row');
+                layoutWrapper.classList.add('md:flex-row-reverse');
+                leftBtn.className = "px-2 py-1 text-[10px] font-bold rounded-md transition-all bg-white text-googleBlue shadow-sm border border-gray-200/50";
+            } else {
+                layoutWrapper.classList.remove('md:flex-row-reverse');
+                layoutWrapper.classList.add('md:flex-row');
+                rightBtn.className = "px-2 py-1 text-[10px] font-bold rounded-md transition-all bg-white text-googleBlue shadow-sm border border-gray-200/50";
+            }
+        }
+
+        // 設定壓縮強度
+        function setCompressionLevel(level) {
+            compressionLevel = level;
+            
+            const lowBtn = document.getElementById('compress-low-btn');
+            const medBtn = document.getElementById('compress-med-btn');
+            const highBtn = document.getElementById('compress-high-btn');
+            
+            [lowBtn, medBtn, highBtn].forEach(btn => {
+                btn.className = "py-2 text-xs font-medium rounded-lg transition-all text-gray-600 hover:text-gray-900";
+            });
+            
+            const activeBtn = document.getElementById(`compress-${level}-btn`);
+            activeBtn.className = "py-2 text-xs font-medium rounded-lg transition-all bg-white text-googleBlue shadow-sm font-bold border border-blue-100";
+            
+            document.getElementById('compress-title-desc').textContent = compressionSettings[level].title;
+            document.getElementById('compress-detail-desc').textContent = compressionSettings[level].desc;
+        }
+
+        // 初始化拖放與檔案選擇
+        function initDragAndDrop() {
+            dropZone.addEventListener('click', (e) => {
+                if(e.target === fileInput) return;
+                fileInput.click();
+            });
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.add('border-googleBlue', 'bg-blue-50/50');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.remove('border-googleBlue', 'bg-blue-50/50');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files && files.length > 0) {
+                    handleFiles(files);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                    handleFiles(e.target.files);
+                }
+            });
+        }
+
+        // 初始化 SortableJS 拖曳排序
+        function initSortable() {
+            Sortable.create(pagesGrid, {
+                handle: '.drag-handle',
+                animation: 250,
+                ghostClass: 'sortable-ghost',
+                chosenClass: 'sortable-chosen',
+                onEnd: function (evt) {
+                    const oldIndex = evt.oldIndex;
+                    const newIndex = evt.newIndex;
+                    
+                    if (oldIndex !== newIndex) {
+                        const [movedPage] = pages.splice(oldIndex, 1);
+                        pages.splice(newIndex, 0, movedPage);
+                        renderPagesGrid();
+                    }
+                }
+            });
+        }
+
+        // 綁定基礎事件
+        function setupEventListeners() {
+            clearBtn.addEventListener('click', () => {
+                showConfirm('確定要清除所有已匯入的頁面嗎？', () => {
+                    pages = [];
+                    sourceFiles = {};
+                    updateUIState();
+                });
+            });
+
+            exportBtn.addEventListener('click', () => {
+                exportCombinedPDF();
+            });
+
+            alertCloseBtn.addEventListener('click', () => {
+                alertModal.classList.add('hidden');
+            });
+        }
+
+        // 顯示/隱藏 Loading
+        function toggleLoading(show, title = '處理中...', desc = '請稍候') {
+            loadingTitle.textContent = title;
+            loadingDesc.textContent = desc;
+            if (show) {
+                loadingOverlay.classList.remove('hidden');
+            } else {
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        // 顯示自訂訊息框
+        function showAlert(message, type = 'info', title = '通知') {
+            alertTitle.textContent = title;
+            alertMessage.textContent = message;
+            
+            alertCloseBtn.classList.remove('hidden');
+            confirmCancel.classList.add('hidden');
+            confirmOk.classList.add('hidden');
+            
+            if (type === 'error') {
+                alertIconContainer.className = 'w-10 h-10 rounded-full flex items-center justify-center bg-red-100 text-googleRed';
+                alertIconContainer.innerHTML = '<i data-lucide="alert-circle" class="w-6 h-6"></i>';
+                alertCloseBtn.className = 'px-5 py-2 text-sm font-medium text-white bg-googleRed hover:bg-red-600 rounded-full transition-colors';
+            } else if (type === 'success') {
+                alertIconContainer.className = 'w-10 h-10 rounded-full flex items-center justify-center bg-green-100 text-googleGreen';
+                alertIconContainer.innerHTML = '<i data-lucide="check-circle-2" class="w-6 h-6"></i>';
+                alertCloseBtn.className = 'px-5 py-2 text-sm font-medium text-white bg-googleGreen hover:bg-green-600 rounded-full transition-colors';
+            } else {
+                alertIconContainer.className = 'w-10 h-10 rounded-full flex items-center justify-center bg-blue-100 text-googleBlue';
+                alertIconContainer.innerHTML = '<i data-lucide="info" class="w-6 h-6"></i>';
+                alertCloseBtn.className = 'px-5 py-2 text-sm font-medium text-white bg-googleBlue hover:bg-blue-600 rounded-full transition-colors';
+            }
+            
+            lucide.createIcons();
+            alertModal.classList.remove('hidden');
+            alertCloseBtn.onclick = () => alertModal.classList.add('hidden');
+        }
+
+        // 確認對話框
+        function showConfirm(message, onConfirm) {
+            alertTitle.textContent = '確認操作';
+            alertMessage.textContent = message;
+            alertIconContainer.className = 'w-10 h-10 rounded-full flex items-center justify-center bg-yellow-100 text-googleYellow';
+            alertIconContainer.innerHTML = '<i data-lucide="help-circle" class="w-6 h-6"></i>';
+            
+            alertCloseBtn.classList.add('hidden');
+            confirmCancel.classList.remove('hidden');
+            confirmOk.classList.remove('hidden');
+            
+            lucide.createIcons();
+            alertModal.classList.remove('hidden');
+
+            confirmCancel.onclick = () => {
+                alertModal.classList.add('hidden');
+            };
+
+            confirmOk.onclick = () => {
+                alertModal.classList.add('hidden');
+                onConfirm();
+            };
+        }
+
+        // 處理匯入的檔案 (PDF / 圖片)
+        async function handleFiles(files) {
+            toggleLoading(true, '正在剖析檔案...', '正在讀取您的文件與圖像資料');
+            
+            let loadedCount = 0;
+            let errorCount = 0;
+            let lastErrorMessage = '';
+
+            for (const file of files) {
+                const fileType = file.type ? file.type.toLowerCase() : '';
+                const fileName = file.name.toLowerCase();
+                const fileId = `file_${++fileIdCounter}`;
+
+                const isPdf = fileType === 'application/pdf' || fileName.endsWith('.pdf');
+                const isImage = fileType.startsWith('image/') || /\.(png|jpe?g|jpg)$/i.test(fileName);
+
+                try {
+                    if (isPdf) {
+                        const arrayBuffer = await readFileAsArrayBuffer(file);
+                        sourceFiles[fileId] = {
+                            name: file.name,
+                            arrayBuffer: arrayBuffer,
+                            type: 'pdf'
+                        };
+                        
+                        await extractPdfPages(fileId, arrayBuffer.slice(0));
+                        loadedCount++;
+                    } 
+                    else if (isImage) {
+                        const rawArrayBuffer = await readFileAsArrayBuffer(file);
+                        const previewUrl = await readFileAsDataURL(file);
+
+                        sourceFiles[fileId] = {
+                            name: file.name,
+                            arrayBuffer: rawArrayBuffer,
+                            type: 'image',
+                            mimeType: file.type || (fileName.endsWith('.png') ? 'image/png' : 'image/jpeg')
+                        };
+
+                        pages.push({
+                            id: `page_${++pageIdCounter}`,
+                            type: 'image',
+                            fileId: fileId,
+                            previewUrl: previewUrl,
+                            sourcePageIndex: 0,
+                            name: file.name
+                        });
+
+                        loadedCount++;
+                    } else {
+                        throw new Error(`不支援的檔案格式: ${file.name}`);
+                    }
+                } catch (error) {
+                    console.error("檔案匯入失敗:", error);
+                    lastErrorMessage = error.message;
+                    errorCount++;
+                }
+            }
+
+            toggleLoading(false);
+            
+            if (errorCount > 0) {
+                showAlert(`已成功匯入 ${loadedCount} 個項目。另外有 ${errorCount} 個檔案讀取失敗。\n失敗原因: ${lastErrorMessage}`, 'error', '匯入提示');
+            }
+            
+            updateUIState();
+            fileInput.value = '';
+        }
+
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function readFileAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // 智慧瘦身壓縮核心
+        function resizeAndCompressImage(arrayBuffer, mimeType, maxDim, quality) {
+            return new Promise((resolve, reject) => {
+                const blob = new Blob([arrayBuffer], { type: mimeType });
+                const img = new Image();
+                img.src = URL.createObjectURL(blob);
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round((height * maxDim) / width);
+                            width = maxDim;
+                        } else {
+                            width = Math.round((width * maxDim) / height);
+                            height = maxDim;
+                        }
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    canvas.toBlob((compressedBlob) => {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            resolve(reader.result);
+                            URL.revokeObjectURL(img.src);
+                        };
+                        reader.onerror = reject;
+                        reader.readAsArrayBuffer(compressedBlob);
+                    }, 'image/jpeg', quality);
+                };
+                img.onerror = (err) => {
+                    reject(err);
+                    URL.revokeObjectURL(img.src);
+                };
+            });
+        }
+
+        // 剖析 PDF 頁面
+        async function extractPdfPages(fileId, arrayBuffer) {
+            const fileName = sourceFiles[fileId].name;
+            const loadingTask = pdfjsLib.getDocument({ 
+                data: new Uint8Array(arrayBuffer),
+                disableRange: true,
+                disableAutoFetch: true
+            });
+            const pdf = await loadingTask.promise;
+            
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                
+                const viewport = page.getViewport({ scale: 0.5 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                
+                const previewUrl = canvas.toDataURL('image/jpeg', 0.7);
+                
+                pages.push({
+                    id: `page_${++pageIdCounter}`,
+                    type: 'pdf',
+                    fileId: fileId,
+                    previewUrl: previewUrl,
+                    sourcePageIndex: pageNum - 1,
+                    name: fileName
+                });
+            }
+        }
+
+        function updateUIState() {
+            const totalPages = pages.length;
+            pageCountBadge.textContent = `${totalPages} 頁`;
+
+            if (totalPages === 0) {
+                selectedPageId = null;
+                emptyState.classList.remove('hidden');
+                pagesContainer.classList.add('hidden');
+                exportBtn.disabled = true;
+                exportBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                emptyState.classList.add('hidden');
+                pagesContainer.classList.remove('hidden');
+                exportBtn.disabled = false;
+                exportBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                renderPagesGrid();
+            }
+        }
+
+        // 渲染卡片網格
+        function renderPagesGrid() {
+            pagesGrid.innerHTML = '';
+            
+            pages.forEach((page, index) => {
+                const card = document.createElement('div');
+                const isSelected = page.id === selectedPageId;
+                
+                const selectionClass = isSelected 
+                    ? 'ring-4 ring-googleBlue border-transparent scale-[1.01]' 
+                    : 'hover:shadow-md hover:border-googleBlue';
+
+                card.className = `group relative bg-gray-50 rounded-xl border border-gray-200 overflow-hidden flex flex-col justify-between transition-all duration-200 cursor-pointer ${selectionClass}`;
+                card.setAttribute('data-id', page.id);
+                
+                card.onclick = (e) => {
+                    if (e.target.closest('button') || e.target.closest('.drag-handle') || e.target.closest('input')) {
+                        return;
+                    }
+                    selectPage(page.id);
+                };
+
+                const sourceBadgeColor = page.type === 'pdf' ? 'bg-blue-100 text-googleBlue' : 'bg-green-100 text-googleGreen';
+                const fileTypeName = page.type === 'pdf' ? 'PDF' : '圖片';
+
+                card.innerHTML = `
+                    <!-- 頂部卡片控制欄 -->
+                    <div class="flex items-center justify-between p-2 bg-white border-b border-gray-100">
+                        <div class="flex items-center gap-1">
+                            <span class="text-[10px] text-gray-400 font-medium">第</span>
+                            <input type="number" min="1" max="${pages.length}" value="${index + 1}"
+                                onchange="changePageOrder(${index}, this.value)"
+                                onkeydown="if(event.key === 'Enter') this.blur()"
+                                class="w-11 h-6 text-center bg-gray-50 border border-gray-200 rounded-md text-xs font-bold text-gray-800 focus:outline-none focus:ring-1 focus:ring-googleBlue focus:border-googleBlue focus:bg-white transition-all"
+                                title="修改此數字即可直接重新排序" />
+                            <span class="text-[10px] text-gray-400 font-medium">頁</span>
+                        </div>
+                        <button onclick="deletePage('${page.id}')" class="p-1 rounded-full text-gray-400 hover:text-googleRed hover:bg-red-50 transition-colors" title="移除此頁">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+
+                    <!-- 頁面縮圖預覽 -->
+                    <div class="flex-1 flex items-center justify-center p-3 min-h-[140px] max-h-[180px] bg-gray-100/50">
+                        <img src="${page.previewUrl}" alt="Page Preview" class="max-w-full max-h-[130px] object-contain shadow-sm border border-gray-200 rounded">
+                    </div>
+
+                    <!-- 底部資訊與拖曳把手 -->
+                    <div class="p-2 bg-white border-t border-gray-100 flex items-center justify-between">
+                        <span class="text-[10px] text-gray-500 truncate max-w-[80px]" title="${page.name}">
+                            ${page.name}
+                        </span>
+                        
+                        <div class="drag-handle px-2 py-1 bg-gray-50 rounded text-gray-400 hover:text-googleBlue hover:bg-blue-50 cursor-grab active:cursor-grabbing flex items-center gap-0.5 transition-colors" title="按住並拖曳排序">
+                            <i data-lucide="grip-vertical" class="w-3.5 h-3.5"></i>
+                        </div>
+                    </div>
+                `;
+
+                pagesGrid.appendChild(card);
+            });
+
+            lucide.createIcons();
+            updatePreviewPanel();
+        }
+
+        // 修改頁碼排序
+        function changePageOrder(oldIndex, newValueStr) {
+            let newPosition = parseInt(newValueStr, 10);
+            
+            if (isNaN(newPosition)) {
+                renderPagesGrid();
+                return;
+            }
+            if (newPosition < 1) newPosition = 1;
+            if (newPosition > pages.length) newPosition = pages.length;
+
+            const newIndex = newPosition - 1;
+            if (oldIndex === newIndex) {
+                renderPagesGrid();
+                return;
+            }
+
+            const [movedPage] = pages.splice(oldIndex, 1);
+            pages.splice(newIndex, 0, movedPage);
+
+            renderPagesGrid();
+        }
+
+        // 點選頁面卡片（一律初始化重置縮放狀態）
+        function selectPage(pageId) {
+            selectedPageId = pageId;
+            currentZoom = 1.0;
+            panX = 0;
+            panY = 0;
+            renderPagesGrid();
+        }
+
+        // 【全新】無段式縮放與滑鼠拖曳漫遊控制核心
+        function applyZoomAndPan(smooth = false) {
+            const img = document.getElementById('preview-image');
+            if (!img) return;
+
+            // 縮放時開啟平滑過渡；拖曳漫遊時要求零延遲（smooth = false）
+            img.style.transition = smooth ? 'transform 0.15s ease-out' : 'none';
+            img.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
+
+            // 更新預覽列百分比文字
+            const zoomPercentSpan = document.getElementById('zoom-percent');
+            if (zoomPercentSpan) {
+                zoomPercentSpan.textContent = `${Math.round(currentZoom * 100)}%`;
+            }
+
+            // 動態變更滑鼠游標
+            if (currentZoom > 1.0) {
+                img.classList.remove('cursor-default');
+                if (isPanning) {
+                    img.classList.remove('cursor-grab');
+                    img.classList.add('cursor-grabbing');
+                } else {
+                    img.classList.remove('cursor-grabbing');
+                    img.classList.add('cursor-grab');
+                }
+            } else {
+                img.classList.remove('cursor-grab', 'cursor-grabbing');
+                img.classList.add('cursor-default');
+            }
+        }
+
+        // 放大/縮小函式
+        function zoomPreview(delta) {
+            const img = document.getElementById('preview-image');
+            if (!img) return;
+
+            const previousZoom = currentZoom;
+            // 限制縮放倍率在 50% 至 400%
+            currentZoom = Math.min(Math.max(currentZoom + delta, 0.5), 4.0);
+
+            if (currentZoom <= 1.0) {
+                panX = 0;
+                panY = 0;
+            } else if (previousZoom <= 1.0 && currentZoom > 1.0) {
+                panX = 0;
+                panY = 0;
+            } else {
+                // 等比縮放位移量，確保縮放時焦點維持
+                const ratio = currentZoom / previousZoom;
+                panX *= ratio;
+                panY *= ratio;
+            }
+
+            applyZoomAndPan(true);
+        }
+
+        // 重設縮放大小
+        function resetZoom() {
+            currentZoom = 1.0;
+            panX = 0;
+            panY = 0;
+            applyZoomAndPan(true);
+        }
+
+        // 初始化預覽大圖拖曳漫遊 (Drag-to-Pan) 與 快捷 Alt+滾輪 縮放事件
+        function initPanAndScrollEvents() {
+            const wrapper = document.getElementById('preview-image-wrapper');
+            const img = document.getElementById('preview-image');
+            if (!wrapper || !img) return;
+
+            // 1. 滑鼠拖曳漫遊
+            img.addEventListener('mousedown', (e) => {
+                if (currentZoom <= 1.0) return;
+                isPanning = true;
+                startX = e.clientX - panX;
+                startY = e.clientY - panY;
+                applyZoomAndPan();
+                e.preventDefault(); // 阻止瀏覽器預設的圖片拖曳陰影
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isPanning) return;
+                panX = e.clientX - startX;
+                panY = e.clientY - startY;
+                applyZoomAndPan();
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isPanning) {
+                    isPanning = false;
+                    applyZoomAndPan();
+                }
+            });
+
+            // 2. Alt + 滑鼠滾輪 快捷無段式縮放
+            wrapper.addEventListener('wheel', (e) => {
+                if (e.altKey) {
+                    e.preventDefault();
+                    const delta = e.deltaY < 0 ? 0.25 : -0.25;
+                    zoomPreview(delta);
+                }
+            }, { passive: false });
+        }
+
+        // 大圖預覽更新
+        function updatePreviewPanel() {
+            const previewContent = document.getElementById('preview-content');
+
+            if (!selectedPageId && pages.length > 0) {
+                selectedPageId = pages[0].id;
+            }
+
+            const activePage = pages.find(p => p.id === selectedPageId);
+
+            if (!activePage) {
+                selectedPageId = null;
+                previewContent.innerHTML = `
+                    <div class="text-center text-gray-400">
+                        <i data-lucide="file-text" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                        <p class="text-sm">點選左側任意頁面<br>即可在此查看預覽大圖</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            const currentIndex = pages.findIndex(p => p.id === selectedPageId) + 1;
+            const sourceInfo = activePage.type === 'pdf'
+                ? `原始 PDF 文件的第 ${activePage.sourcePageIndex + 1} 頁`
+                : `匯入之獨立圖形檔`;
+
+            previewContent.innerHTML = `
+                <div class="w-full flex flex-col items-center gap-4 animate-fade-in h-full">
+                    
+                    <!-- 局部細觀與整體檢視之可視溢出包裝 -->
+                    <div id="preview-image-wrapper" class="w-full bg-white rounded-lg border border-gray-150 p-2 shadow-inner flex items-center justify-center min-h-[220px] max-h-[340px] overflow-hidden select-none relative">
+                        <img id="preview-image" src="${activePage.previewUrl}" alt="Page Large Preview" 
+                             class="max-w-full max-h-[320px] object-contain rounded shadow origin-center select-none cursor-default"
+                             style="transform: translate(0px, 0px) scale(1);" />
+                    </div>
+                    
+                    <!-- 文件元數據與資訊 -->
+                    <div class="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 space-y-1.5 text-left shrink-0">
+                        <div class="flex justify-between items-center pb-1.5 border-b border-gray-200">
+                            <span class="font-medium text-gray-500">合併輸出序號:</span>
+                            <span class="font-bold text-googleBlue text-sm">第 ${currentIndex} 頁</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="font-medium text-gray-500">來源檔案:</span>
+                            <span class="font-semibold text-gray-800 truncate max-w-[150px]" title="${activePage.name}">${activePage.name}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="font-medium text-gray-500">原始屬性:</span>
+                            <span class="text-gray-700">${sourceInfo}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            lucide.createIcons();
+            
+            // 圖片渲染後，立即註冊拖曳漫遊與滾輪縮放監聽器
+            setTimeout(() => {
+                initPanAndScrollEvents();
+                applyZoomAndPan(); // 套用當前縮放百分比顯示
+            }, 50);
+        }
+
+        // 刪除單一頁面
+        function deletePage(pageId) {
+            const targetIndex = pages.findIndex(p => p.id === pageId);
+            if (targetIndex !== -1) {
+                pages.splice(targetIndex, 1);
+                if (selectedPageId === pageId) {
+                    selectedPageId = null;
+                }
+                updateUIState();
+            }
+        }
+
+        // 合成導出 (保留西元日期檔名機制 YYYYMMDDHHMM.pdf)
+        async function exportCombinedPDF() {
+            if (pages.length === 0) return;
+
+            toggleLoading(true, '正在合成您的 PDF...', '正在套用您的頁面順序與瘦身優化設定...');
+
+            try {
+                const { PDFDocument } = PDFLib;
+                const finalPdfDoc = await PDFDocument.create();
+
+                const loadedPdfDocs = {};
+
+                for (let i = 0; i < pages.length; i++) {
+                    const page = pages[i];
+                    const sourceFile = sourceFiles[page.fileId];
+                    
+                    toggleLoading(true, '正在合成您的 PDF...', `正在處理第 ${i + 1} / ${pages.length} 頁...`);
+
+                    if (page.type === 'pdf') {
+                        if (!loadedPdfDocs[page.fileId]) {
+                            loadedPdfDocs[page.fileId] = await PDFDocument.load(sourceFile.arrayBuffer.slice(0));
+                        }
+                        const srcDoc = loadedPdfDocs[page.fileId];
+                        
+                        const [copiedPage] = await finalPdfDoc.copyPages(srcDoc, [page.sourcePageIndex]);
+                        finalPdfDoc.addPage(copiedPage);
+
+                    } else if (page.type === 'image') {
+                        const settings = compressionSettings[compressionLevel];
+                        
+                        const compressedImageBytes = await resizeAndCompressImage(
+                            sourceFile.arrayBuffer,
+                            sourceFile.mimeType,
+                            settings.maxDim,
+                            settings.quality
+                        );
+                        
+                        const embeddedImage = await finalPdfDoc.embedJpg(compressedImageBytes);
+                        const { width, height } = embeddedImage.scale(1);
+                        
+                        const newPage = finalPdfDoc.addPage([width, height]);
+                        newPage.drawImage(embeddedImage, {
+                            x: 0,
+                            y: 0,
+                            width: width,
+                            height: height
+                        });
+                    }
+                }
+
+                toggleLoading(true, '正在進行壓縮優化...', '正在進行最後的文件包裝與結構壓縮，請稍候...');
+
+                const pdfBytes = await finalPdfDoc.save({ useObjectStreams: true });
+
+                const now = new Date();
+                const yyyy = now.getFullYear();
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                const dd = String(now.getDate()).padStart(2, '0');
+                const hh = String(now.getHours()).padStart(2, '0');
+                const min = String(now.getMinutes()).padStart(2, '0');
+                const filename = `${yyyy}${mm}${dd}${hh}${min}.pdf`;
+
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const downloadUrl = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                
+                document.body.removeChild(link);
+                URL.revokeObjectURL(downloadUrl);
+
+                toggleLoading(false);
+                showAlert(`您的新文件 "${filename}" 已完美合成並成功下載！`, 'success', '匯出成功');
+
+            } catch (error) {
+                console.error(error);
+                toggleLoading(false);
+                showAlert(`在合成 PDF 過程中發生了錯誤：${error.message}`, 'error', '匯出失敗');
+            }
+        }
+    </script>
+</body>
+</html>
